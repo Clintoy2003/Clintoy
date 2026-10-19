@@ -5,6 +5,7 @@ import { generateReply, type ChatTurn } from "@/lib/ai";
 import { deriveTitle, localEngine } from "@/lib/ai/local";
 import { generateImage } from "@/lib/ai/image";
 import { DEFAULT_MODE, isModeId, type ModeId } from "@/lib/ai/modes";
+import { DEFAULT_FREE_OPENROUTER_MODEL, isFreeOpenRouterModelId } from "@/lib/ai/models";
 import { getConversationForUser, isUuid, serializeConversation, serializeMessage } from "@/lib/chat-data";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -55,11 +56,13 @@ export async function POST(request: Request) {
     message?: unknown;
     conversationId?: unknown;
     mode?: unknown;
+  model?: unknown;
     regenerate?: unknown;
   };
 
   const rawMessage = typeof payload.message === "string" ? payload.message.trim() : "";
   const mode: ModeId = isModeId(payload.mode) ? payload.mode : DEFAULT_MODE;
+  const selectedModel = isFreeOpenRouterModelId(payload.model) ? payload.model : DEFAULT_FREE_OPENROUTER_MODEL;
   const regenerate = payload.regenerate === true;
   const requestedConversation =
     typeof payload.conversationId === "string" && isUuid(payload.conversationId) ? payload.conversationId : null;
@@ -142,6 +145,7 @@ export async function POST(request: Request) {
         mode,
         history,
         displayName: user.displayName,
+        model: selectedModel,
       });
       const [assistantMessage] = await db
         .insert(messages)
@@ -231,6 +235,7 @@ export async function POST(request: Request) {
         mode,
         history,
         displayName: user.displayName,
+        model: selectedModel,
       });
     } catch {
       const fallback = localEngine(rawMessage, mode);

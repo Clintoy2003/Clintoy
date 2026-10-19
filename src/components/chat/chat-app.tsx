@@ -8,6 +8,7 @@ import { ClintoyMark, Wordmark } from "@/components/logo";
 import { Markdown } from "@/components/markdown";
 import type { ConversationSummary, MessageView } from "@/lib/chat-data";
 import { MODES, type ModeId } from "@/lib/ai/modes";
+import { DEFAULT_FREE_OPENROUTER_MODEL, FREE_OPENROUTER_MODELS, type FreeOpenRouterModelId } from "@/lib/ai/models";
 import { useSpeechRecognition } from "@/lib/use-speech-recognition";
 
 type MessageItem = MessageView & { pending?: boolean };
@@ -82,6 +83,7 @@ export function ChatApp({
   const [activeId, setActiveId] = useState<string | null>(initialConversationId);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [mode, setMode] = useState<ModeId>(initialMode);
+  const [selectedModel, setSelectedModel] = useState<FreeOpenRouterModelId>(DEFAULT_FREE_OPENROUTER_MODEL);
   const [input, setInput] = useState(initialPrompt);
   const [voiceNotice, setVoiceNotice] = useState("");
   const [loadingMessages, setLoadingMessages] = useState(Boolean(initialConversationId));
@@ -116,7 +118,7 @@ export function ChatApp({
     if (speech.status === "denied") {
       setVoiceNotice("Microphone access was blocked. Allow it in your browser's site settings to dictate.");
     } else if (speech.status === "unsupported") {
-      setVoiceNotice("Voice input isn't supported in this browser yet — try Chrome, Edge or Safari.");
+      setVoiceNotice("Voice input isn't supported in this browser yet â€” try Chrome, Edge or Safari.");
     } else if (speech.status === "error") {
       setVoiceNotice("Didn't catch that. Try again, a little closer to the mic.");
     } else if (speech.status === "listening") {
@@ -215,7 +217,7 @@ export function ChatApp({
       const text = (rawInput ?? input).trim();
       if (!text || thinking) return;
       if (text.length > 4000) {
-        setError("That's a little long — keep it under 4,000 characters and I'll take it from there.");
+        setError("That's a little long â€” keep it under 4,000 characters and I'll take it from there.");
         return;
       }
       speech.stop();
@@ -234,7 +236,7 @@ export function ChatApp({
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text, conversationId: activeId, mode }),
+          body: JSON.stringify({ message: text, conversationId: activeId, mode, model: selectedModel }),
         });
 
         if (response.status === 401) {
@@ -274,12 +276,12 @@ export function ChatApp({
       } catch {
         setMessages((current) => current.filter((message) => message.id !== tempId));
         setInput(text);
-        setError("Network hiccup — your message is safe in the box. Try sending again.");
+        setError("Network hiccup â€” your message is safe in the box. Try sending again.");
       } finally {
         setThinking(false);
       }
     },
-    [activeId, input, mode, router, speech, thinking],
+    [activeId, input, mode, selectedModel, router, speech, thinking],
   );
 
   const regenerate = useCallback(async () => {
@@ -290,7 +292,7 @@ export function ChatApp({
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: activeId, mode, regenerate: true }),
+        body: JSON.stringify({ conversationId: activeId, mode, model: selectedModel, regenerate: true }),
       });
       if (response.status === 401) {
         router.push("/login?next=/chat");
@@ -321,7 +323,7 @@ export function ChatApp({
     } finally {
       setThinking(false);
     }
-  }, [activeId, mode, router, thinking]);
+  }, [activeId, mode, selectedModel, router, thinking]);
 
   const renameConversation = useCallback(async (id: string, title: string) => {
     const clean = title.trim();
@@ -418,7 +420,7 @@ export function ChatApp({
       return;
     }
     const title = activeConversation?.title ?? "clintoy-conversation";
-    const header = `# ${title}\n\n_Clintoy · mode: ${mode} · exported ${new Date().toLocaleString("en-GB")}_\n\n`;
+    const header = `# ${title}\n\n_Clintoy Â· mode: ${mode} Â· exported ${new Date().toLocaleString("en-GB")}_\n\n`;
     const body = messages
       .map((message) => {
         const who = message.role === "assistant" ? "Clintoy" : firstName || "You";
@@ -484,7 +486,7 @@ export function ChatApp({
                 key={item.id}
                 type="button"
                 aria-pressed={mode === item.id}
-                title={`${item.name} — ${item.blurb}`}
+                title={`${item.name} â€” ${item.blurb}`}
                 onClick={() => setMode(item.id)}
                 className={`rounded-full px-2.5 py-1 text-[0.72rem] font-medium transition ${
                   mode === item.id ? "bg-ink text-paper" : "text-ink-soft hover:text-ink"
@@ -494,7 +496,19 @@ export function ChatApp({
               </button>
             ))}
           </fieldset>
-
+          <label className="flex items-center gap-1.5 rounded-full border border-line bg-card px-2 py-1 text-xs text-ink-soft">
+            <span className="hidden md:inline">AI Model</span>
+            <select
+              aria-label="Free AI model"
+              value={selectedModel}
+              onChange={(event) => setSelectedModel(event.target.value as FreeOpenRouterModelId)}
+              className="max-w-[135px] bg-transparent text-xs text-ink outline-none"
+            >
+              {FREE_OPENROUTER_MODELS.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             onClick={exportTranscript}
@@ -600,7 +614,7 @@ export function ChatApp({
 
             {conversations.length === 0 ? (
               <p className="px-2 py-3 text-xs leading-relaxed text-muted">
-                No saved threads yet. Your first question will appear here — and stay here, even after a refresh.
+                No saved threads yet. Your first question will appear here â€” and stay here, even after a refresh.
               </p>
             ) : (
               <ul className="space-y-1">
@@ -668,7 +682,7 @@ export function ChatApp({
                             </span>
                             <span className="mt-0.5 flex items-center gap-1 text-[0.62rem] text-muted">
                               <Clock />
-                              {timeAgo(conversation.updatedAt)} · {conversation.mode}
+                              {timeAgo(conversation.updatedAt)} Â· {conversation.mode}
                             </span>
                           </button>
 
@@ -814,15 +828,15 @@ export function ChatApp({
                 <div className="rise pt-6">
                   <p className="sticker">
                     <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
-                    {mode} · {MODE_HELP[mode]}
+                    {mode} Â· {MODE_HELP[mode]}
                   </p>
                   <h1 className="mt-4 text-[clamp(1.9rem,4.4vw,2.8rem)] font-semibold leading-[1.1] text-ink">
                     {firstName ? `What are we thinking about, ${firstName}?` : "What can I help with?"}
                   </h1>
                   <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted">
                     {mode === "image"
-                      ? "Describe a scene, mood or subject and Clintoy will generate an original picture — no stock photos."
-                      : "Bring the real material: the messy thread, the blank page, the bug that only happens in production. Clintoy works best when you ask for a specific artefact — a plan, an email, a snippet, a decision."}
+                      ? "Describe a scene, mood or subject and Clintoy will generate an original picture â€” no stock photos."
+                      : "Bring the real material: the messy thread, the blank page, the bug that only happens in production. Clintoy works best when you ask for a specific artefact â€” a plan, an email, a snippet, a decision."}
                   </p>
 
                   <fieldset className="mt-6 flex flex-wrap gap-1.5 sm:hidden">
@@ -891,7 +905,7 @@ export function ChatApp({
                     </>
                   )}
                   <p className="mt-5 text-[0.7rem] text-muted">
-                    Tip: press <kbd className="rounded border border-line bg-card px-1 font-mono text-[0.65rem]">⌘K</kbd> or{" "}
+                    Tip: press <kbd className="rounded border border-line bg-card px-1 font-mono text-[0.65rem]">âŒ˜K</kbd> or{" "}
                     <kbd className="rounded border border-line bg-card px-1 font-mono text-[0.65rem]">Ctrl K</kbd> for a
                     fresh thought. Everything is saved to your account.
                   </p>
@@ -912,7 +926,7 @@ export function ChatApp({
                               <ClintoyMark className="h-6 w-6" />
                               <span className="text-xs font-semibold text-ink">Clintoy</span>
                               <span className="rounded-full border border-line px-1.5 py-0.5 font-mono text-[0.55rem] uppercase tracking-[0.1em] text-muted">
-                                {message.engine === "cloud" ? "cloud model" : "clintoy engine · local"}
+                                {message.engine === "cloud" ? "cloud model" : "clintoy engine Â· local"}
                               </span>
                             </div>
                             <div className="rounded-2xl rounded-tl-md border border-line bg-card px-4 py-3">
@@ -983,7 +997,7 @@ export function ChatApp({
                           />
                         ))}
                         <span className="ml-1 text-[0.7rem] text-muted">
-                          {mode === "image" ? "painting your picture…" : `thinking in ${mode} mode…`}
+                          {mode === "image" ? "painting your pictureâ€¦" : `thinking in ${mode} modeâ€¦`}
                         </span>
                       </div>
                     </div>
@@ -1049,11 +1063,11 @@ export function ChatApp({
                   }}
                   placeholder={
                     speech.status === "listening"
-                      ? "Listening… speak now"
+                      ? "Listeningâ€¦ speak now"
                       : mode === "image"
-                        ? "Describe the picture you want — subject, mood, colours, style…"
+                        ? "Describe the picture you want â€” subject, mood, colours, styleâ€¦"
                         : activeConversation
-                          ? `Reply to Clintoy — mode: ${mode}`
+                          ? `Reply to Clintoy â€” mode: ${mode}`
                           : "Ask anything. Paste anything. Enter to send, Shift+Enter for a new line."
                   }
                   className="max-h-44 min-h-[2.75rem] w-full resize-none bg-transparent px-2 pt-1.5 text-[0.92rem] leading-relaxed text-ink placeholder:text-muted focus:outline-none"
@@ -1061,7 +1075,7 @@ export function ChatApp({
 
                 {speech.status === "listening" && speech.interimText ? (
                   <p className="px-2 pb-1 text-[0.78rem] italic text-muted" aria-hidden="true">
-                    {speech.interimText}…
+                    {speech.interimText}â€¦
                   </p>
                 ) : null}
 
@@ -1085,12 +1099,12 @@ export function ChatApp({
                     <p className="hidden truncate text-[0.65rem] text-muted sm:block">
                       {thinking
                         ? mode === "image"
-                          ? "Clintoy is painting…"
-                          : "Clintoy is composing…"
+                          ? "Clintoy is paintingâ€¦"
+                          : "Clintoy is composingâ€¦"
                         : speech.status === "listening"
-                          ? "Listening — tap the mic again to stop"
-                          : `${mode} mode · ${engineLabel}`}
-                      {charCount > 3600 ? ` · ${charCount}/4000` : ""}
+                          ? "Listening â€” tap the mic again to stop"
+                          : `${mode} mode Â· ${engineLabel}`}
+                      {charCount > 3600 ? ` Â· ${charCount}/4000` : ""}
                     </p>
                   </div>
 
@@ -1123,7 +1137,7 @@ export function ChatApp({
                       disabled={thinking || input.trim().length === 0}
                       className="flex h-9 items-center gap-1.5 rounded-full bg-ink px-3.5 text-xs font-semibold text-paper transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      {thinking ? (mode === "image" ? "Painting…" : "Thinking…") : mode === "image" ? "Generate" : "Send"}
+                      {thinking ? (mode === "image" ? "Paintingâ€¦" : "Thinkingâ€¦") : mode === "image" ? "Generate" : "Send"}
                       <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <path d="M2.5 8h10M9 4.5l3.5 3.5L9 11.5" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>

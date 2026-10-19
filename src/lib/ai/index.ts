@@ -1,5 +1,6 @@
 import { localEngine } from "./local";
 import { getMode, SYSTEM_PROMPTS, type ModeId } from "./modes";
+import { DEFAULT_FREE_OPENROUTER_MODEL, type FreeOpenRouterModelId } from "./models";
 
 export type ChatTurn = { role: "user" | "assistant"; content: string };
 
@@ -17,7 +18,20 @@ type Provider = {
   model: string;
 };
 
-function resolveProvider(): Provider | null {
+function resolveProvider(selectedModel?: FreeOpenRouterModelId): Provider | null {
+  const openrouter = process.env.OPENROUTER_API_KEY;
+  if (openrouter) {
+    return {
+      name: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1",
+      key: openrouter,
+      model: selectedModel ?? DEFAULT_FREE_OPENROUTER_MODEL,
+    };
+  }
+
+  // A requested free OpenRouter model must not silently switch to a paid provider.
+  if (selectedModel) return null;
+
   const openai = process.env.OPENAI_API_KEY;
   if (openai) {
     return {
@@ -27,15 +41,7 @@ function resolveProvider(): Provider | null {
       model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
     };
   }
-  const openrouter = process.env.OPENROUTER_API_KEY;
-  if (openrouter) {
-    return {
-      name: "openrouter",
-      baseUrl: "https://openrouter.ai/api/v1",
-      key: openrouter,
-      model: process.env.OPENROUTER_MODEL ?? "openai/gpt-4o-mini",
-    };
-  }
+
   const groq = process.env.GROQ_API_KEY;
   if (groq) {
     return {
@@ -45,6 +51,7 @@ function resolveProvider(): Provider | null {
       model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
     };
   }
+
   return null;
 }
 
@@ -119,8 +126,9 @@ export async function generateReply(params: {
   mode: ModeId;
   history?: ChatTurn[];
   displayName?: string;
+  model?: FreeOpenRouterModelId;
 }): Promise<GeneratedReply> {
-  const provider = resolveProvider();
+  const provider = resolveProvider(params.model);
   if (provider) {
     const cloud = await callProvider(provider, {
       message: params.message,
