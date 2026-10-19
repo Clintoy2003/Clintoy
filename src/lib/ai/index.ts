@@ -1,4 +1,4 @@
-import { localEngine } from "./local";
+﻿import { localEngine } from "./local";
 import { getMode, SYSTEM_PROMPTS, type ModeId } from "./modes";
 import { DEFAULT_FREE_OPENROUTER_MODEL, type FreeOpenRouterModelId } from "./models";
 
@@ -75,7 +75,7 @@ const MODE_SUGGESTIONS: Record<ModeId, string[]> = {
 async function callProvider(
   provider: Provider,
   params: { message: string; mode: ModeId; history: ChatTurn[]; displayName?: string },
-): Promise<string | null> {
+): Promise<{ content: string; model: string } | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
   const trimmedHistory = params.history.slice(-10);
@@ -106,10 +106,16 @@ async function callProvider(
 
     if (!response.ok) return null;
     const data = (await response.json()) as {
+      model?: string;
       choices?: { message?: { content?: string } }[];
     };
     const content = data.choices?.[0]?.message?.content?.trim();
-    return content && content.length > 1 ? content : null;
+    if (!content || content.length <= 1) return null;
+
+    return {
+      content,
+      model: data.model?.trim() || provider.model,
+    };
   } catch {
     return null;
   } finally {
@@ -138,10 +144,10 @@ export async function generateReply(params: {
     });
     if (cloud) {
       return {
-        content: cloud,
+        content: cloud.content,
         suggestions: MODE_SUGGESTIONS[params.mode],
         engine: "cloud",
-        model: provider.model,
+        model: cloud.model,
       };
     }
   }
@@ -154,3 +160,4 @@ export async function generateReply(params: {
     model: "clintoy-2",
   };
 }
+
