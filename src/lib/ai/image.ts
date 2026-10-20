@@ -8,6 +8,8 @@
  * images are generated through the OpenAI Images API instead.
  */
 
+import { InferenceClient } from "@huggingface/inference";
+
 export type ImageResult = {
   dataUrl: string;
   engine: "cloud" | "local";
@@ -187,16 +189,129 @@ async function generateWithOpenAI(prompt: string, apiKey: string): Promise<Image
   }
 }
 
+async function generateWithHuggingFace(prompt: string, token: string): Promise<ImageResult | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90_000);
+
+  try {
+    const client = new InferenceClient(token);
+    const imageBlob = await client.textToImage({
+      provider: "auto",
+      model: process.env.HF_IMAGE_MODEL ?? "black-forest-labs/FLUX.1-schnell",
+      inputs: prompt,
+      parameters: { num_inference_steps: 5 },
+    }, { signal: controller.signal });
+
+    const buffer = Buffer.from(await imageBlob.arrayBuffer());
+    if (buffer.length === 0) return null;
+
+    const mimeType = imageBlob.type || "image/jpeg";
+    if (!mimeType.startsWith("image/")) return null;
+
+    return {
+      dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}`,
+      engine: "cloud",
+      caption: prompt,
+    };
+  } catch (error) {
+    console.error(
+      "Hugging Face image generation failed:",
+      error instanceof Error ? error.message : "Unknown provider error"
+    );
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function generateWithCloudflare(
+  prompt: string,
+  accountId: string,
+  token: string,
+): Promise<ImageResult | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+
+  try {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/black-forest-labs/flux-1-schnell`,
+      {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt, steps: 4 }),
+      },
+    );
+
+    const data = (await response.json().catch(() => null)) as {
+      success?: boolean;
+      result?: { image?: string };
+      errors?: { code?: number; message?: string }[];
+    } | null;
+
+    if (!response.ok || !data?.success || !data.result?.image) {
+      console.error(
+        "Cloudflare image generation failed:",
+        response.status,
+        data?.errors?.map((item) => item.message).join("; ") || "No image returned",
+      );
+      return null;
+    }
+
+    return {
+      dataUrl: `data:image/jpeg;base64,${data.result.image}`,
+      engine: "cloud",
+      caption: prompt,
+    };
+  } catch (error) {
+    console.error(
+      "Cloudflare image generation failed:",
+      error instanceof Error ? error.message : "Unknown provider error",
+    );
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 export async function generateImage(rawPrompt: string): Promise<ImageResult> {
   const prompt = rawPrompt.trim().slice(0, 600) || "an abstract idea";
+
+  // Try Cloudflare FLUX first because this provider was tested successfully.
+  const cfAccount = process.env.CF_ACCOUNT_ID;
+  const cfToken = process.env.CF_API_TOKEN;
+
+  if (cfAccount && cfToken) {
+    const cfResult = await generateWithCloudflare(prompt, cfAccount, cfToken);
+    if (cfResult) return cfResult;
+  }
+
+  // Keep the existing providers as backups.
+  const hfToken = process.env.HF_TOKEN;
+  if (hfToken) {
+    const hfResult = await generateWithHuggingFace(prompt, hfToken);
+    if (hfResult) return hfResult;
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (apiKey) {
     const cloudResult = await generateWithOpenAI(prompt, apiKey);
     if (cloudResult) return cloudResult;
   }
-  return { dataUrl: svgToDataUrl(renderLocalSvg(prompt)), engine: "local", caption: prompt };
+
+  // Preserve the original local fallback if all cloud providers fail.
+  console.warn("All configured cloud image providers failed; using local artwork.");
+  return {
+    dataUrl: svgToDataUrl(renderLocalSvg(prompt)),
+    engine: "local",
+    caption: prompt,
+  };
 }
 
 export function imageEngineStatus() {
-  return { cloud: Boolean(process.env.OPENAI_API_KEY) };
+  return {
+    cloud: Boolean((process.env.CF_ACCOUNT_ID && process.env.CF_API_TOKEN) || process.env.HF_TOKEN || process.env.OPENAI_API_KEY),
+  };
 }

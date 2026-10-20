@@ -20,3 +20,16 @@ pnpm-debug.log*
 .firebase/
 .DS_Store
 Thumbs.db
+
+# Local test artifacts and temporary backups
+cloudflare-image-test.jpg
+database-test.cjs
+tsconfig.tsbuildinfo
+*.before-free-model
+*.free-model-backup
+*.working-backup
+*.step30-backup
+*.backup
+
+# Cloudflare integration backups
+*.before-cloudflare-*

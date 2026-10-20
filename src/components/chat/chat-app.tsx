@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -20,6 +20,13 @@ const STARTERS = [
   "Explain compound interest to a beginner",
 ];
 
+const CODE_TOOLS = [
+  { label: "Explain", prompt: "Explain the following code step by step. Describe its purpose, important parts, and assumptions." },
+  { label: "Debug", prompt: "Debug the following code or error. Identify the root cause and give verification steps." },
+  { label: "Fix", prompt: "Fix the following code while preserving its intended behavior. Provide the corrected code and explain the changes." },
+  { label: "Review", prompt: "Review the following code for bugs, security risks, performance issues, and edge cases. Suggest specific fixes." },
+  { label: "Generate", prompt: "Help implement the requested functionality. Provide working code and a practical test or usage example." },
+] as const;
 const MODE_HELP: Record<ModeId, string> = {
   balanced: "Considered answers, structure and next steps.",
   concise: "The shortest useful answer, nothing else.",
@@ -1042,6 +1049,36 @@ export function ChatApp({
                 </div>
               ) : null}
 
+              {mode === "code" ? (
+                <div className="mb-2 rounded-xl border border-line bg-card/70 p-2.5">
+                  <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted">
+                    Coding toolkit - choose a task
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CODE_TOOLS.map((tool) => (
+                      <button
+                        key={tool.label}
+                        type="button"
+                        disabled={thinking}
+                        onClick={() => {
+                          const current = input.trim();
+                          const task = current
+                            ? `${tool.prompt}\n\n${current}`
+                            : `${tool.prompt}\n\nPaste your code, error message, or requirements here.`;
+                          setInput(task.slice(0, 4000));
+                          inputRef.current?.focus();
+                        }}
+                        className="rounded-full border border-line bg-paper px-3 py-1.5 text-xs font-medium text-ink-soft transition hover:border-accent hover:text-accent disabled:opacity-40"
+                      >
+                        {tool.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[0.68rem] text-muted">
+                    Choose a task, review the prompt, then press Send.
+                  </p>
+                </div>
+              ) : null}
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
